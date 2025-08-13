@@ -60,6 +60,8 @@ A modern expense tracking app powered by AI and natural language processing. Sim
 
 5. **Detailed Lists**: Click on summary cards to view itemized expense lists
 
+6. **Delete Expenses**: Remove individual expenses from the detailed list view
+
 ## API Routes
 
 - `POST /api/parse-expense`: Parses natural language expense input using OpenAI

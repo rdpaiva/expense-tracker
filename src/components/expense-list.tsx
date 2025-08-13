@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { X, Calendar, Tag, Store } from 'lucide-react';
+import { X, Calendar, Tag, Store, Trash2 } from 'lucide-react';
 import { Expense } from '@/types/expense';
 import { expenseDB } from '@/lib/db';
 
@@ -11,11 +11,13 @@ interface ExpenseListProps {
   period: 'today' | 'week' | 'month';
   isOpen: boolean;
   onClose: () => void;
+  onExpenseDeleted?: () => void;
 }
 
-export default function ExpenseList({ period, isOpen, onClose }: ExpenseListProps) {
+export default function ExpenseList({ period, isOpen, onClose, onExpenseDeleted }: ExpenseListProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadExpenses = async () => {
     setLoading(true);
@@ -104,6 +106,30 @@ export default function ExpenseList({ period, isOpen, onClose }: ExpenseListProp
     return colors[category.toLowerCase()] || colors.other;
   };
 
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!confirm('Are you sure you want to delete this expense?')) {
+      return;
+    }
+
+    setDeletingId(expenseId);
+    try {
+      await expenseDB.deleteExpense(expenseId);
+      
+      // Remove from local state
+      setExpenses(prev => prev.filter(exp => exp.id !== expenseId));
+      
+      // Notify parent to refresh summary
+      if (onExpenseDeleted) {
+        onExpenseDeleted();
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      alert('Failed to delete expense. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -164,10 +190,26 @@ export default function ExpenseList({ period, isOpen, onClose }: ExpenseListProp
                         <span>{formatDate(expense.date)}</span>
                       </div>
                     </div>
-                    <div className="text-right ml-4">
-                      <div className="text-lg font-semibold text-primary">
-                        {formatCurrency(expense.amount)}
+                    <div className="flex items-center gap-2 ml-4">
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-primary">
+                          {formatCurrency(expense.amount)}
+                        </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteExpense(expense.id)}
+                        disabled={deletingId === expense.id}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 p-2"
+                        title="Delete expense"
+                      >
+                        {deletingId === expense.id ? (
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </div>

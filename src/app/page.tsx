@@ -139,7 +139,10 @@ export default function Home() {
         </div>
 
         {/* Summary Cards */}
-        <ExpenseSummaryComponent refreshTrigger={refreshTrigger} />
+        <ExpenseSummaryComponent 
+          refreshTrigger={refreshTrigger} 
+          onExpenseDeleted={() => setRefreshTrigger(prev => prev + 1)}
+        />
 
         {/* Instructions */}
         <div className="bg-white/50 backdrop-blur-sm rounded-lg p-6 max-w-2xl mx-auto">

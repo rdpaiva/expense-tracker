@@ -16,8 +16,8 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
   const [isRecording, setIsRecording] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const accumulatedTextRef = useRef<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isRestartingRef = useRef(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,84 +33,100 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
       return;
     }
 
-    // Clear accumulated text when starting new recording
-    accumulatedTextRef.current = '';
+    // Don't start if already recording or restarting
+    if (isRecording || isRestartingRef.current) {
+      return;
+    }
+
+    // Clear input when starting new recording
     setInput('');
+    isRestartingRef.current = false;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     
-    recognition.continuous = true; // Keep recording until stopped
-    recognition.interimResults = true; // Show interim results
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => {
       setIsRecording(true);
       setIsListening(true);
+      isRestartingRef.current = false;
     };
 
     recognition.onresult = (event) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
-
-      // Process all results from the beginning
-      for (let i = 0; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-
-      // Accumulate final transcripts and show with current interim
-      if (finalTranscript.trim()) {
-        accumulatedTextRef.current = finalTranscript.trim();
-      }
-
-      // Display accumulated final text + current interim text
-      const displayText = accumulatedTextRef.current + 
-        (accumulatedTextRef.current && interimTranscript ? ' ' : '') + 
-        interimTranscript;
+      let transcript = '';
       
-      setInput(displayText);
+      // Get the most recent result
+      if (event.results.length > 0) {
+        const lastResult = event.results[event.results.length - 1];
+        transcript = lastResult[0].transcript;
+      }
+      
+      setInput(transcript);
     };
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      // Don't clear text on errors - keep what we have
-      if (event.error === 'no-speech' || event.error === 'audio-capture') {
-        // These errors are common during pauses, just continue
-        return;
+      
+      // Only stop on serious errors
+      if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setIsRecording(false);
+        setIsListening(false);
+        isRestartingRef.current = false;
       }
-      setIsRecording(false);
-      setIsListening(false);
     };
 
     recognition.onend = () => {
-      // If we're still supposed to be recording, restart recognition
-      if (isRecording) {
+      // Only restart if we're still supposed to be recording and not already restarting
+      if (isRecording && !isRestartingRef.current) {
+        isRestartingRef.current = true;
         setTimeout(() => {
-          if (isRecording) {
-            recognition.start();
+          if (isRecording && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (error) {
+              console.error('Failed to restart recognition:', error);
+              setIsRecording(false);
+              setIsListening(false);
+              isRestartingRef.current = false;
+            }
           }
         }, 100);
-      } else {
+      } else if (!isRecording) {
         setIsListening(false);
+        isRestartingRef.current = false;
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error('Failed to start recognition:', error);
+      setIsRecording(false);
+      setIsListening(false);
+    }
   };
 
   const stopRecording = () => {
     setIsRecording(false);
+    isRestartingRef.current = false;
+    
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping recognition:', error);
+      }
     }
-    // Clean up any trailing spaces
+    
+    // Clean up text and stop listening state
     setInput(prev => prev.trim());
+    setTimeout(() => {
+      setIsListening(false);
+    }, 200);
   };
 
   const handleCameraClick = () => {

@@ -8,9 +8,10 @@ import ExpenseList from './expense-list';
 
 interface ExpenseSummaryProps {
   refreshTrigger: number; // Used to trigger refresh when new expense is added
+  onExpenseDeleted?: () => void;
 }
 
-export default function ExpenseSummaryComponent({ refreshTrigger }: ExpenseSummaryProps) {
+export default function ExpenseSummaryComponent({ refreshTrigger, onExpenseDeleted }: ExpenseSummaryProps) {
   const [summaries, setSummaries] = useState<ExpenseSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | null>(null);
@@ -105,6 +106,12 @@ export default function ExpenseSummaryComponent({ refreshTrigger }: ExpenseSumma
         period={selectedPeriod || 'today'}
         isOpen={selectedPeriod !== null}
         onClose={() => setSelectedPeriod(null)}
+        onExpenseDeleted={() => {
+          loadSummaries(); // Refresh summaries when expense is deleted
+          if (onExpenseDeleted) {
+            onExpenseDeleted();
+          }
+        }}
       />
     </>
   );
