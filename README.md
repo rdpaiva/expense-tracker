@@ -5,7 +5,7 @@ A modern expense tracking app powered by AI and natural language processing. Sim
 ## Features
 
 - **Natural Language Input**: Type expenses like "Spent $5.25 at Starbucks" or "20 dollars for uber"
-- **Voice Input**: Press and hold the microphone button to record expenses with speech-to-text
+- **Voice Input**: Press and hold the microphone button to record expenses with AI-powered Whisper transcription
 - **Receipt Scanning**: Take photos of receipts and automatically extract multiple expenses
 - **AI-Powered Parsing**: OpenAI GPT-4o Vision analyzes receipts and GPT-3.5 Turbo processes text
 - **Interactive Review**: Edit, remove, or confirm extracted expenses before saving
@@ -19,9 +19,9 @@ A modern expense tracking app powered by AI and natural language processing. Sim
 
 - **Framework**: Next.js 14 with TypeScript
 - **Styling**: Tailwind CSS + Shadcn UI
-- **AI**: OpenAI GPT-4o Vision for receipt scanning, GPT-3.5 Turbo for text parsing
+- **AI**: OpenAI GPT-4o Vision for receipt scanning, GPT-3.5 Turbo for text parsing, Whisper for speech-to-text
 - **Database**: IndexedDB for client-side storage
-- **Speech**: Web Speech API for voice input
+- **Audio**: MediaRecorder API + OpenAI Whisper for high-accuracy voice transcription
 - **Camera**: HTML5 File API with camera capture
 - **Deployment**: Optimized for Vercel
 
@@ -66,6 +66,7 @@ A modern expense tracking app powered by AI and natural language processing. Sim
 
 - `POST /api/parse-expense`: Parses natural language expense input using OpenAI
 - `POST /api/parse-receipt`: Analyzes receipt images and extracts multiple expenses using OpenAI Vision
+- `POST /api/transcribe-audio`: Transcribes audio recordings to text using OpenAI Whisper
 
 ## Building for Production
 

@@ -14,10 +14,10 @@ interface ExpenseInputProps {
 export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: ExpenseInputProps) {
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isRestartingRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,106 +27,72 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
     }
   };
 
-  const startRecording = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition is not supported in this browser.');
+  const startRecording = async () => {
+    if (isRecording || isProcessingAudio) {
       return;
     }
 
-    // Don't start if already recording or restarting
-    if (isRecording || isRestartingRef.current) {
-      return;
-    }
-
-    // Clear input when starting new recording
-    setInput('');
-    isRestartingRef.current = false;
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsRecording(true);
-      setIsListening(true);
-      isRestartingRef.current = false;
-    };
-
-    recognition.onresult = (event) => {
-      let transcript = '';
-      
-      // Get the most recent result
-      if (event.results.length > 0) {
-        const lastResult = event.results[event.results.length - 1];
-        transcript = lastResult[0].transcript;
-      }
-      
-      setInput(transcript);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      
-      // Only stop on serious errors
-      if (event.error === 'network' || event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setIsRecording(false);
-        setIsListening(false);
-        isRestartingRef.current = false;
-      }
-    };
-
-    recognition.onend = () => {
-      // Only restart if we're still supposed to be recording and not already restarting
-      if (isRecording && !isRestartingRef.current) {
-        isRestartingRef.current = true;
-        setTimeout(() => {
-          if (isRecording && recognitionRef.current) {
-            try {
-              recognitionRef.current.start();
-            } catch (error) {
-              console.error('Failed to restart recognition:', error);
-              setIsRecording(false);
-              setIsListening(false);
-              isRestartingRef.current = false;
-            }
-          }
-        }, 100);
-      } else if (!isRecording) {
-        setIsListening(false);
-        isRestartingRef.current = false;
-      }
-    };
-
-    recognitionRef.current = recognition;
     try {
-      recognition.start();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        await processAudioWithWhisper(audioBlob);
+        
+        // Stop all tracks to free up the microphone
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setIsRecording(true);
+      mediaRecorder.start();
     } catch (error) {
-      console.error('Failed to start recognition:', error);
-      setIsRecording(false);
-      setIsListening(false);
+      console.error('Error accessing microphone:', error);
+      alert('Could not access microphone. Please check permissions.');
     }
   };
 
   const stopRecording = () => {
-    setIsRecording(false);
-    isRestartingRef.current = false;
-    
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (error) {
-        console.error('Error stopping recognition:', error);
-      }
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
-    
-    // Clean up text and stop listening state
-    setInput(prev => prev.trim());
-    setTimeout(() => {
-      setIsListening(false);
-    }, 200);
+  };
+
+  const processAudioWithWhisper = async (audioBlob: Blob) => {
+    setIsProcessingAudio(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+
+      const response = await fetch('/api/transcribe-audio', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to transcribe audio');
+      }
+
+      const { text } = await response.json();
+      setInput(text.trim());
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      alert('Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsProcessingAudio(false);
+    }
   };
 
   const handleCameraClick = () => {
@@ -152,7 +118,7 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
             placeholder="e.g., Spent $5.25 at Starbucks for coffee this morning"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={isProcessing || isRecording}
+            disabled={isProcessing || isRecording || isProcessingAudio}
             className="min-h-[100px] resize-none"
             rows={3}
           />
@@ -177,19 +143,19 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
             onMouseLeave={stopRecording}
             onTouchStart={startRecording}
             onTouchEnd={stopRecording}
-            disabled={isProcessing}
-            className={`${isListening ? 'bg-red-100 border-red-300' : ''} select-none`}
+            disabled={isProcessing || isProcessingAudio}
+            className={`${isRecording ? 'bg-red-100 border-red-300' : ''} select-none`}
             title="Hold to record voice"
           >
-            <Mic className={`h-4 w-4 ${isListening ? 'text-red-600' : ''}`} />
+            <Mic className={`h-4 w-4 ${isRecording ? 'text-red-600' : ''}`} />
           </Button>
           <Button
             type="submit"
-            disabled={!input.trim() || isProcessing || isRecording}
+            disabled={!input.trim() || isProcessing || isRecording || isProcessingAudio}
             size="icon"
             title="Submit expense"
           >
-            {isProcessing ? (
+            {isProcessing || isProcessingAudio ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
@@ -205,9 +171,14 @@ export default function ExpenseInput({ onSubmit, onImageSubmit, isProcessing }: 
           className="hidden"
         />
       </form>
-      {isListening && (
+      {isRecording && (
         <p className="text-sm text-muted-foreground mt-2 text-center">
           🎤 Recording... Release button when done
+        </p>
+      )}
+      {isProcessingAudio && (
+        <p className="text-sm text-muted-foreground mt-2 text-center">
+          🤖 Processing audio with AI...
         </p>
       )}
     </div>
